@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("StringUtils")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+ac3792780edaf3a31322bdd367d0b95768c93d35")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+35418bb9abd8868cec2e69568a5b3a1f5a600fbc")]
 [assembly: System.Reflection.AssemblyProductAttribute("StringUtils")]
 [assembly: System.Reflection.AssemblyTitleAttribute("StringUtils")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

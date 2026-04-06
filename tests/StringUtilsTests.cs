@@ -46,4 +46,28 @@ public class StringUtilsTests
     {
         Assert.Equal("many-separators-here", StringUtils.ToSlug("  many   ---   separators  here "));
     }
+
+    [Fact]
+    public void IsPalindrome_PhraseWithPunctuation_ReturnsTrue()
+    {
+        Assert.True(StringUtils.IsPalindrome("A man, a plan, a canal: Panama"));
+    }
+
+    [Fact]
+    public void IsPalindrome_NonPalindrome_ReturnsFalse()
+    {
+        Assert.False(StringUtils.IsPalindrome("hello"));
+    }
+
+    [Fact]
+    public void TruncateWithEllipsis_TextLongerThanLimit_Truncates()
+    {
+        Assert.Equal("hello...", StringUtils.TruncateWithEllipsis("hello world", 8));
+    }
+
+    [Fact]
+    public void TruncateWithEllipsis_TextWithinLimit_ReturnsOriginal()
+    {
+        Assert.Equal("hello", StringUtils.TruncateWithEllipsis("hello", 5));
+    }
 }
