@@ -1,0 +1,12 @@
+/workspaces/CI---Auto-Documentation/src/bin/Release/net10.0/StringUtils.deps.json
+/workspaces/CI---Auto-Documentation/src/bin/Release/net10.0/StringUtils.dll
+/workspaces/CI---Auto-Documentation/src/bin/Release/net10.0/StringUtils.pdb
+/workspaces/CI---Auto-Documentation/src/obj/Release/net10.0/StringUtils.GeneratedMSBuildEditorConfig.editorconfig
+/workspaces/CI---Auto-Documentation/src/obj/Release/net10.0/StringUtils.AssemblyInfoInputs.cache
+/workspaces/CI---Auto-Documentation/src/obj/Release/net10.0/StringUtils.AssemblyInfo.cs
+/workspaces/CI---Auto-Documentation/src/obj/Release/net10.0/StringUtils.csproj.CoreCompileInputs.cache
+/workspaces/CI---Auto-Documentation/src/obj/Release/net10.0/StringUtils.sourcelink.json
+/workspaces/CI---Auto-Documentation/src/obj/Release/net10.0/StringUtils.dll
+/workspaces/CI---Auto-Documentation/src/obj/Release/net10.0/refint/StringUtils.dll
+/workspaces/CI---Auto-Documentation/src/obj/Release/net10.0/StringUtils.pdb
+/workspaces/CI---Auto-Documentation/src/obj/Release/net10.0/ref/StringUtils.dll
