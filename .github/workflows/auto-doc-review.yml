@@ -19,17 +19,59 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Run Codex review and documentation
-        uses: openai/codex-action@v1
-        with:
-          prompt-file: .codex/prompts/review-doc.prompt.md
+      - name: Generate PR documentation via OpenAI API
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-
-      - name: Ensure documentation files exist
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
         run: |
-          mkdir -p docs
-          touch docs/CHANGELOG_AUTO.md docs/PR_SUMMARY.md
+          python3 << 'PYEOF'
+          import os, json, subprocess, urllib.request, urllib.error
+
+          api_key = os.environ["OPENAI_API_KEY"]
+          base_sha = os.environ.get("BASE_SHA", "HEAD~1")
+          head_sha = os.environ.get("HEAD_SHA", "HEAD")
+
+          diff = subprocess.run(
+              ["git", "diff", f"{base_sha}...{head_sha}"],
+              capture_output=True, text=True
+          ).stdout[:10000] or "No diff available."
+
+          system_prompt = open(".codex/prompts/review-doc.prompt.md").read()
+
+          def call_openai(user_msg):
+              payload = json.dumps({
+                  "model": "gpt-4o-mini",
+                  "messages": [
+                      {"role": "system", "content": system_prompt},
+                      {"role": "user", "content": user_msg}
+                  ]
+              }).encode()
+              req = urllib.request.Request(
+                  "https://api.openai.com/v1/chat/completions",
+                  data=payload,
+                  headers={
+                      "Authorization": f"Bearer {api_key}",
+                      "Content-Type": "application/json"
+                  }
+              )
+              with urllib.request.urlopen(req, timeout=60) as resp:
+                  return json.loads(resp.read())["choices"][0]["message"]["content"]
+
+          os.makedirs("docs", exist_ok=True)
+
+          summary = call_openai(
+              f"Generate the docs/PR_SUMMARY.md content for this pull request diff:\n\n{diff}"
+          )
+          open("docs/PR_SUMMARY.md", "w").write(summary)
+          print("docs/PR_SUMMARY.md written.")
+
+          changelog = call_openai(
+              f"Generate the docs/CHANGELOG_AUTO.md content for this pull request diff:\n\n{diff}"
+          )
+          open("docs/CHANGELOG_AUTO.md", "w").write(changelog)
+          print("docs/CHANGELOG_AUTO.md written.")
+          PYEOF
 
       - name: Commit generated docs
         uses: stefanzweifel/git-auto-commit-action@v5
