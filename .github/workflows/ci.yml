@@ -1,13 +1,11 @@
-name: CI
+name: PR Tests And Errors
 
 on:
   pull_request:
-  push:
-    branches:
-      - main
+    types: [opened, synchronize, reopened]
 
 jobs:
-  test:
+  test-and-check-errors:
     runs-on: ubuntu-latest
 
     steps:
@@ -22,5 +20,8 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore tests/StringUtils.Tests.csproj
 
-      - name: Run tests
-        run: dotnet test tests/StringUtils.Tests.csproj --configuration Release --no-restore --verbosity minimal
+      - name: Build solution
+        run: dotnet build tests/StringUtils.Tests.csproj --configuration Release --no-restore --verbosity minimal
+
+      - name: Run tests when present
+        run: dotnet test tests/StringUtils.Tests.csproj --configuration Release --no-build --verbosity minimal

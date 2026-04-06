@@ -1,106 +1,82 @@
-name: PR Grade
+name: Main Documentation
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-  workflow_dispatch:
+  push:
+    branches:
+      - main
 
 permissions:
-  contents: read
-  pull-requests: write
+  contents: write
 
 jobs:
-  grade:
+  document-application:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "10.0.x"
+          fetch-depth: 0
 
-      - name: Restore dependencies
-        run: dotnet restore tests/StringUtils.Tests.csproj
-
-      - name: Run tests
-        id: tests
-        continue-on-error: true
-        run: dotnet test tests/StringUtils.Tests.csproj --configuration Release --no-restore --verbosity minimal
-
-      - name: Score and comment PR
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+      - name: Generate application documentation via OpenAI API
         env:
-          TEST_STATUS: ${{ steps.tests.outcome }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          python3 << 'PYEOF'
+          import json, os, subprocess, urllib.request
+
+          api_key = os.environ["OPENAI_API_KEY"]
+          head_sha = os.environ.get("HEAD_SHA", "HEAD")
+
+          repo_tree = subprocess.run(
+              ["git", "ls-tree", "-r", "--name-only", head_sha],
+              capture_output=True, text=True
+          ).stdout
+
+          readme = ""
+          if os.path.exists("README.md"):
+              with open("README.md", "r") as readme_file:
+                  readme = readme_file.read()
+
+          src_snapshot = subprocess.run(
+              ["git", "grep", "-n", "", "--", "src", "tests"],
+              capture_output=True, text=True
+          ).stdout[:15000]
+
+          system_prompt = open(".codex/prompts/system-doc.prompt.md").read()
+
+          payload = json.dumps({
+              "model": "gpt-4o-mini",
+              "messages": [
+                  {"role": "system", "content": system_prompt},
+                  {
+                      "role": "user",
+                      "content": f"Repository files:\n{repo_tree}\n\nREADME:\n{readme}\n\nSource snapshot:\n{src_snapshot}"
+                  }
+              ]
+          }).encode()
+
+          request = urllib.request.Request(
+              "https://api.openai.com/v1/chat/completions",
+              data=payload,
+              headers={
+                  "Authorization": f"Bearer {api_key}",
+                  "Content-Type": "application/json"
+              }
+          )
+
+          with urllib.request.urlopen(request, timeout=60) as response:
+              content = json.loads(response.read())["choices"][0]["message"]["content"]
+
+          os.makedirs("docs", exist_ok=True)
+          with open("docs/APP_DOCUMENTATION.md", "w") as output_file:
+              output_file.write(content)
+          print("docs/APP_DOCUMENTATION.md written.")
+          PYEOF
+
+      - name: Commit generated application documentation
+        uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          script: |
-            const testStatus = process.env.TEST_STATUS;
-            const testsScore = testStatus === 'success' ? 6 : 0;
-
-            const files = await github.paginate(github.rest.pulls.listFiles, {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.payload.pull_request.number,
-              per_page: 100
-            });
-
-            const docsUpdated = files.some((f) =>
-              ['docs/CHANGELOG_AUTO.md', 'docs/PR_SUMMARY.md'].includes(f.filename)
-            );
-            const docsScore = docsUpdated ? 2 : 0;
-
-            const totalChanges = files.reduce((sum, f) => sum + (f.changes || 0), 0);
-            const smallDiff = totalChanges <= 200;
-            const diffScore = smallDiff ? 2 : 0;
-
-            const total = testsScore + docsScore + diffScore;
-            const marker = '<!-- ai-pr-grade -->';
-
-            const body = `${marker}
-            ## PR Automation Grade: ${total}/10
-
-            - Tests pass (6): ${testsScore}/6
-            - Docs updated (2): ${docsScore}/2
-            - Small diff (2, <= 200 changed lines): ${diffScore}/2
-
-            Result details:
-            - Test status: ${testStatus}
-            - Total changed lines: ${totalChanges}
-            `;
-
-            const { owner, repo } = context.repo;
-            const issue_number = context.payload.pull_request.number;
-
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner,
-              repo,
-              issue_number,
-              per_page: 100
-            });
-
-            const previous = comments.find((c) =>
-              c.user.type === 'Bot' && c.body && c.body.includes(marker)
-            );
-
-            if (previous) {
-              await github.rest.issues.updateComment({
-                owner,
-                repo,
-                comment_id: previous.id,
-                body
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number,
-                body
-              });
-            }
-
-            if (testsScore === 0) {
-              core.setFailed('Tests are failing, grade reduced.');
-            }
+          commit_message: "docs: auto-update application documentation"
+          file_pattern: docs/APP_DOCUMENTATION.md

@@ -1,18 +1,13 @@
 # AI PR Auto Documentation + Review
 
-This project is a simple, demo-ready GitHub Actions setup that automatically reviews pull requests, generates documentation, and posts PR feedback for a C#/.NET app.
+This project is a simple, demo-ready GitHub Actions setup for a C#/.NET web app that separates main-branch documentation generation from PR validation and PR evaluation.
 
 ## What This Project Does
 
-On every pull request, automation can:
-- Review changed files with OpenAI Codex.
-- Generate/update:
-  - `docs/CHANGELOG_AUTO.md`
-  - `docs/PR_SUMMARY.md`
-- Detect TODO/FIXME patterns and include warnings in the summary.
-- Check whether tests were updated and reflect this in the summary.
-- Post an AI PR summary comment.
-- Grade the PR with a 10-point score.
+This repository provides three workflows:
+- Generate full app documentation after code is merged to `main`.
+- Run build, tests, and error checks on pull requests.
+- Evaluate pull requests and generate `docs/PR_SUMMARY.md` and `docs/CHANGELOG_AUTO.md`.
 
 ## Project Structure
 
@@ -24,8 +19,10 @@ On every pull request, automation can:
 
 .codex/prompts/
   review-doc.prompt.md
+  system-doc.prompt.md
 
 docs/
+  APP_DOCUMENTATION.md
   CHANGELOG_AUTO.md
   PR_SUMMARY.md
 
@@ -52,36 +49,32 @@ dotnet test tests/StringUtils.Tests.csproj --configuration Release
 
 ## GitHub Actions Workflows
 
-### 1) CI (`.github/workflows/ci.yml`)
-- Triggers on:
-  - `pull_request`
+### 1) Main Documentation (`.github/workflows/grade.yml`)
+- Trigger:
   - `push` to `main`
-- Steps:
-  - Set up .NET
-  - Restore dependencies
-  - Run tests with `dotnet test`
+- Purpose:
+  - Creates formal application documentation in `docs/APP_DOCUMENTATION.md`
+  - Describes application use, connected servers, systems, services, and architecture based on repository contents
+- Result:
+  - Commits updated mainline documentation back to the repository
 
-### 2) Auto Documentation + Review (`.github/workflows/auto-doc-review.yml`)
+### 2) PR Tests And Errors (`.github/workflows/ci.yml`)
+- Trigger:
+  - `pull_request` events: `opened`, `synchronize`, `reopened`
+- Purpose:
+  - Restores dependencies
+  - Builds the test project to surface compile errors
+  - Runs tests when present
+
+### 3) PR Evaluation (`.github/workflows/auto-doc-review.yml`)
 - Triggers on:
   - `pull_request` events: `opened`, `synchronize`
-  - `workflow_dispatch` (manual run)
-- Steps:
-  - Checkout code
-  - Run `openai/codex-action@v1` using prompt file `.codex/prompts/review-doc.prompt.md`
-  - Uses repository secret: `OPENAI_API_KEY`
-  - Ensures and updates docs outputs
-  - Commits generated docs changes
-  - Posts/updates a PR summary comment
-
-### 3) PR Grade (`.github/workflows/grade.yml`)
-- Triggers on:
-  - `pull_request` events: `opened`, `synchronize`, `reopened`
   - `workflow_dispatch`
-- Scoring:
-  - Tests pass: 6 points
-  - Docs updated: 2 points
-  - Small diff (<= 200 changed lines): 2 points
-- Posts/updates grading comment on the PR
+- Purpose:
+  - Reviews changed files with AI
+  - Generates `docs/PR_SUMMARY.md`
+  - Generates `docs/CHANGELOG_AUTO.md`
+  - Posts or updates a PR summary comment
 
 ## C# Demo App
 
@@ -94,29 +87,26 @@ dotnet test tests/StringUtils.Tests.csproj --configuration Release
 
 ## Required GitHub Secret
 
-Add this repository secret before running AI review workflow:
+Add this repository secret before running the AI-powered workflows:
 - `OPENAI_API_KEY`
 
 GitHub path:
 - `Settings` -> `Secrets and variables` -> `Actions` -> `New repository secret`
 
-## How PR Review and Auto Documentation Work
+## How The Three Workflows Work
 
-1. Open or update a pull request.
-2. `auto-doc-review.yml` runs Codex with `.codex/prompts/review-doc.prompt.md`.
-3. Codex updates only:
-   - `docs/CHANGELOG_AUTO.md`
-   - `docs/PR_SUMMARY.md`
-4. Workflow commits documentation updates.
-5. Workflow posts an "AI PR Summary" comment in the PR.
+1. When code is merged into `main`, `grade.yml` generates or refreshes `docs/APP_DOCUMENTATION.md`.
+2. When a pull request is opened or updated, `ci.yml` builds the project and runs tests to surface errors.
+3. When a pull request is opened or updated, `auto-doc-review.yml` evaluates the PR diff and updates:
+  - `docs/CHANGELOG_AUTO.md`
+  - `docs/PR_SUMMARY.md`
+4. The PR evaluation workflow also posts a PR summary comment.
 
-## How Grading Works
+## Generated Documentation Files
 
-When a PR is opened or updated, `grade.yml`:
-1. Runs tests.
-2. Checks if docs outputs were updated in PR files.
-3. Computes total changed lines from PR file stats.
-4. Publishes grade comment with score breakdown.
+- `docs/APP_DOCUMENTATION.md`: formal application documentation for the main branch
+- `docs/PR_SUMMARY.md`: pull request summary for reviewers
+- `docs/CHANGELOG_AUTO.md`: pull request changelog notes
 
 ## Demo Ready
 
@@ -127,7 +117,9 @@ Suggested demo flow:
 2. Change `src/StringUtils.cs` and/or tests.
 3. Open a PR.
 4. Show:
-  - CI test results
-  - AI-generated changelog and summary
+  - PR build and test results
+  - AI-generated PR summary and changelog
   - AI PR comment
-  - Automated PR grade
+5. Merge the PR to `main`.
+6. Show:
+  - Generated application documentation in `docs/APP_DOCUMENTATION.md`

@@ -1,4 +1,4 @@
-name: AI PR Auto Documentation + Review
+name: PR Evaluation
 
 on:
   pull_request:
@@ -60,7 +60,7 @@ jobs:
 
           os.makedirs("docs", exist_ok=True)
 
-          summary = call_openai(
+            summary = call_openai(
               f"Generate the docs/PR_SUMMARY.md content for this pull request diff:\n\n{diff}"
           )
           open("docs/PR_SUMMARY.md", "w").write(summary)
@@ -122,3 +122,4 @@ jobs:
                 body
               });
             }
+

@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("StringUtils.Tests")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+ac3792780edaf3a31322bdd367d0b95768c93d35")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+2a390f764fbe9decdcd69cca13521e90178e3ee7")]
 [assembly: System.Reflection.AssemblyProductAttribute("StringUtils.Tests")]
 [assembly: System.Reflection.AssemblyTitleAttribute("StringUtils.Tests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
