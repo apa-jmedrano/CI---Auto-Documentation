@@ -1,13 +1,16 @@
+```markdown
 # Auto Changelog
 
 ## Added
-- Initial automation scaffolding for AI-generated PR documentation and review.
+- New method `IsPalindrome` to check if a string is a palindrome.
+- New method `TruncateWithEllipsis` to truncate a string with an ellipsis if it exceeds a specified length.
 
 ## Changed
-- N/A
+- Updated `AssemblyInformationalVersionAttribute` for `StringUtils` and `StringUtils.Tests`.
 
 ## Fixed
-- N/A
+- None.
 
 ## Notes
-- This file is intended to be updated by the AI documentation workflow.
+- None.
+```
