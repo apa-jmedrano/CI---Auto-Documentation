@@ -35,4 +35,11 @@ public static class StringUtils
         string cleaned = Regex.Replace(text.ToLowerInvariant(), @"[^a-z0-9]", string.Empty);
         return cleaned == ReverseText(cleaned);
     }
+
+    // Extrae solo los dígitos de un texto. Muy útil para IDs, teléfonos o códigos.
+    public static string ExtractDigits(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        return Regex.Replace(text, @"\\D", string.Empty);
+    }
 }
