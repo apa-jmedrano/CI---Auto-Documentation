@@ -26,4 +26,13 @@ public static class StringUtils
         string cleaned = Regex.Replace(normalized, @"[^a-z0-9\s-]", string.Empty);
         return Regex.Replace(cleaned, @"[\s-]+", "-").Trim('-');
     }
+
+    // Útil para validaciones rápidas de texto ignorando espacios, signos y mayúsculas.
+    public static bool IsPalindrome(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+
+        string cleaned = Regex.Replace(text.ToLowerInvariant(), @"[^a-z0-9]", string.Empty);
+        return cleaned == ReverseText(cleaned);
+    }
 }
