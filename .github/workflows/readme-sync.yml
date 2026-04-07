@@ -1,4 +1,4 @@
-name: README Sync
+name: Readme Sync
 
 on:
   pull_request:
