@@ -1,0 +1,381 @@
+name: README Sync
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync-readme:
+    name: Synchronize README with Code Changes
+    runs-on: ubuntu-latest
+    # Prevent commit loops when this workflow pushes README changes.
+    if: github.actor != 'github-actions[bot]'
+
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Update README via OpenAI
+        id: sync
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 << 'PYEOF'
+          import json
+          import os
+          import subprocess
+          import urllib.request
+          import urllib.error
+
+          output_path = os.environ["GITHUB_OUTPUT"]
+
+          def set_output(key, value):
+              with open(output_path, "a", encoding="utf-8") as f:
+                  f.write(f"{key}={value}\n")
+
+          def run_git(args):
+              return subprocess.run(["git", *args], capture_output=True, text=True)
+
+          latest_commit_msg = run_git(["log", "-1", "--pretty=%B"]).stdout.strip()
+          if "[skip readme-sync]" in latest_commit_msg:
+              set_output("updated", "false")
+              set_output("status", "skipped_commit_flag")
+              set_output("summary", "Workflow skipped due to commit skip flag.")
+              print("Found [skip readme-sync] in latest commit; skipping workflow logic.")
+              raise SystemExit(0)
+
+          event_name = os.environ.get("EVENT_NAME", "")
+          base_sha = os.environ.get("BASE_SHA", "").strip()
+          head_sha = os.environ.get("HEAD_SHA", "").strip() or "HEAD"
+
+          # For manual runs where PR SHAs are not available, compare last commit by default.
+          if not base_sha:
+              base_sha = "HEAD~1"
+
+          diff_proc = run_git(["diff", f"{base_sha}...{head_sha}"])
+          if diff_proc.returncode != 0:
+              # Fallback keeps the workflow resilient when SHAs are unavailable.
+              diff_proc = run_git(["diff", "HEAD~1...HEAD"])
+
+          diff_text = (diff_proc.stdout or "").strip()
+          if not diff_text:
+              set_output("updated", "false")
+              set_output("status", "no_changes")
+              set_output("summary", "No code diff detected; README sync skipped.")
+              print("No diff detected; skipping README update.")
+              raise SystemExit(0)
+
+          diff_range = f"{base_sha}...{head_sha}"
+          changed_files_proc = run_git(["diff", "--name-only", diff_range])
+          if changed_files_proc.returncode != 0:
+              changed_files_proc = run_git(["diff", "--name-only", "HEAD~1...HEAD"])
+              diff_range = "HEAD~1...HEAD"
+
+          changed_files = [
+              line.strip()
+              for line in (changed_files_proc.stdout or "").splitlines()
+              if line.strip()
+          ]
+
+          # Prioritize stack/business-impacting files for token efficiency and better README targeting.
+          relevant_files = []
+          for p in changed_files:
+              lp = p.lower()
+              is_relevant = (
+                  lp.endswith("program.cs")
+                  or lp.endswith("startup.cs")
+                  or lp.endswith(".csproj")
+                  or lp.endswith(".razor")
+                  or lp.endswith("dockerfile")
+                  or lp.endswith("appsettings.json")
+                  or "/infra/" in f"/{lp}/"
+                  or "/deploy/" in f"/{lp}/"
+                  or "/deployment/" in f"/{lp}/"
+                  or "/k8s/" in f"/{lp}/"
+                  or "/helm/" in f"/{lp}/"
+                  or "/terraform/" in f"/{lp}/"
+                  or "docker-compose" in lp
+                  or lp.startswith(".github/workflows/")
+              )
+              if is_relevant:
+                  relevant_files.append(p)
+
+          filtered_parts = []
+          max_filtered_chars = 40000
+          for p in relevant_files:
+              file_diff_proc = run_git(["diff", "-U2", diff_range, "--", p])
+              file_diff = (file_diff_proc.stdout or "").strip()
+              if not file_diff:
+                  continue
+              filtered_parts.append(file_diff)
+              if sum(len(x) for x in filtered_parts) >= max_filtered_chars:
+                  break
+
+          # Also include targeted semantic lines for framework/db/auth/approval/infrastructure changes.
+          semantic_keywords = [
+              "razor", "blazor", "oracle", "sql server", "sqlserver", "postgres", "postgresql",
+              "approval", "authorize", "authorization", "authentication", "authn", "authz",
+              "identity", "jwt", "oidc", "openid", "deployment", "docker", "kubernetes",
+              "k8s", "helm", "terraform", "workflow", "pipeline",
+          ]
+
+          keyword_lines = []
+          for line in diff_text.splitlines():
+              if not (line.startswith("+") or line.startswith("-")):
+                  continue
+              if line.startswith("+++") or line.startswith("---"):
+                  continue
+              lline = line.lower()
+              if any(k in lline for k in semantic_keywords):
+                  keyword_lines.append(line)
+
+          if keyword_lines:
+              filtered_parts.append("# Semantic diff highlights\n" + "\n".join(keyword_lines[:400]))
+
+          filtered_diff = "\n\n".join(filtered_parts).strip()
+          if filtered_diff:
+              diff_for_model = filtered_diff[:40000]
+          else:
+              # Fallback: provide a smaller truncated full diff when no relevant signals were detected.
+              diff_for_model = diff_text[:30000]
+
+          readme_path = "README.md"
+          if not os.path.exists(readme_path):
+              set_output("updated", "false")
+              set_output("status", "readme_missing")
+              set_output("summary", "README.md does not exist; no update was applied.")
+              print("README.md not found; skipping README update.")
+              raise SystemExit(0)
+
+          with open(readme_path, "r", encoding="utf-8") as f:
+              current_readme = f.read()
+
+          is_bootstrap = not current_readme.strip()
+
+          context_candidates = [
+              "Program.cs",
+              "Startup.cs",
+              "appsettings.json",
+              "Dockerfile",
+          ]
+
+          # Include all .csproj files in the repository as optional stack context.
+          csproj_proc = run_git(["ls-files", "*.csproj"])
+          csproj_files = [line.strip() for line in (csproj_proc.stdout or "").splitlines() if line.strip()]
+
+          context_files = []
+          for p in context_candidates + csproj_files:
+              if os.path.exists(p):
+                  context_files.append(p)
+
+          context_blob_parts = []
+          for p in context_files:
+              try:
+                  with open(p, "r", encoding="utf-8") as f:
+                      text = f.read()
+                  # Keep payload bounded for reliability.
+                  context_blob_parts.append(f"\n\n### FILE: {p}\n{text[:8000]}")
+              except Exception as ex:
+                  context_blob_parts.append(f"\n\n### FILE: {p}\n<unable to read: {ex}>")
+
+          context_blob = "".join(context_blob_parts)
+
+          api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+          if not api_key:
+              set_output("updated", "false")
+              set_output("status", "missing_api_key")
+              set_output("summary", "OPENAI_API_KEY is not configured; README sync skipped.")
+              print("OPENAI_API_KEY missing; skipping README update.")
+              raise SystemExit(0)
+
+          if is_bootstrap:
+              system_prompt = (
+                  "You are an expert technical documentation author. "
+                  "Generate a complete, production-ready README.md from scratch based on the provided git diff and context files. "
+                  "Infer the project architecture and tech stack from Program.cs, Startup.cs, *.csproj, appsettings.json, and Dockerfile when available. "
+                  "The README must include at minimum: project overview, architecture/tech stack, approval/business workflow, "
+                  "database/persistence layer, deployment/infrastructure, and local setup/run instructions. "
+                  "Do not invent features not supported by the provided files. "
+                  "Return only the markdown content, with no code fences and no extra commentary."
+              )
+              user_prompt = (
+                  "Git diff between base and head:\n"
+                  "-----BEGIN DIFF-----\n"
+                  f"{diff_for_model}\n"
+                  "-----END DIFF-----\n\n"
+                  "Stack/context files:\n"
+                  "-----BEGIN CONTEXT-----"
+                  f"{context_blob[:120000]}\n"
+                  "-----END CONTEXT-----\n\n"
+                  "Task: Generate a complete README.md for this project based solely on the information above."
+              )
+          else:
+              system_prompt = (
+                  "You are an expert technical documentation maintainer. "
+                  "Perform a minimal patch update to README.md strictly based on the provided git diff and optional context files. "
+                  "Preserve untouched paragraphs exactly. "
+                  "Only update sections directly impacted by the changes. "
+                  "Do not rewrite the whole README unless the architecture fundamentally changed. "
+                  "Preserve existing structure, heading hierarchy, and markdown style. "
+                  "Update framework, database, deployment/infrastructure, authentication/authorization, and approval/business rule descriptions when changed. "
+                  "Return only the full updated README markdown, with no code fences and no extra commentary."
+              )
+              user_prompt = (
+                  "Current README:\n"
+                  "-----BEGIN README-----\n"
+                  f"{current_readme}\n"
+                  "-----END README-----\n\n"
+                  "Git diff between base and head:\n"
+                  "-----BEGIN DIFF-----\n"
+                  f"{diff_for_model}\n"
+                  "-----END DIFF-----\n\n"
+                  "Optional stack/context files (use only if relevant):\n"
+                  "-----BEGIN CONTEXT-----"
+                  f"{context_blob[:120000]}\n"
+                  "-----END CONTEXT-----\n\n"
+                  "Task:\n"
+                  "1) Preserve untouched paragraphs exactly.\n"
+                  "2) Update only sections impacted by these changes.\n"
+                  "3) Maintain existing markdown heading structure and tone.\n"
+                  "4) Do not rewrite the full README unless architecture fundamentally changed.\n"
+                  "5) If architecture/stack changed (e.g., frameworks, DB, deployment, auth/approval rules), rewrite outdated text accordingly."
+              )
+
+          payload = json.dumps(
+              {
+                  "model": "gpt-4o-mini",
+                  "temperature": 0.1,
+                  "messages": [
+                      {"role": "system", "content": system_prompt},
+                      {"role": "user", "content": user_prompt},
+                  ],
+              }
+          ).encode("utf-8")
+
+          req = urllib.request.Request(
+              "https://api.openai.com/v1/chat/completions",
+              data=payload,
+              headers={
+                  "Authorization": f"Bearer {api_key}",
+                  "Content-Type": "application/json",
+              },
+              method="POST",
+          )
+
+          try:
+              with urllib.request.urlopen(req, timeout=90) as resp:
+                  body = resp.read().decode("utf-8")
+          except urllib.error.HTTPError as e:
+              err = e.read().decode("utf-8", errors="replace")
+              set_output("updated", "false")
+              set_output("status", "openai_http_error")
+              set_output("summary", "OpenAI request failed; README sync skipped.")
+              print(f"OpenAI HTTPError: {e.code} {err}")
+              raise SystemExit(0)
+          except Exception as e:
+              set_output("updated", "false")
+              set_output("status", "openai_error")
+              set_output("summary", "OpenAI request failed; README sync skipped.")
+              print(f"OpenAI error: {e}")
+              raise SystemExit(0)
+
+          parsed = json.loads(body)
+          choices = parsed.get("choices") or []
+          content = ""
+          if choices:
+              content = (choices[0].get("message") or {}).get("content") or ""
+
+          updated_readme = content.strip()
+          if not updated_readme:
+              set_output("updated", "false")
+              set_output("status", "empty_model_output")
+              set_output("summary", "Model returned empty content; README was not changed.")
+              print("Model returned empty README content; skipping write.")
+              raise SystemExit(0)
+
+          if updated_readme.rstrip() == current_readme.rstrip():
+              set_output("updated", "false")
+              set_output("status", "unchanged")
+              set_output("summary", "README already up to date with current code changes.")
+              print("README unchanged after model evaluation.")
+              raise SystemExit(0)
+
+          with open(readme_path, "w", encoding="utf-8") as f:
+              f.write(updated_readme + "\n")
+
+          set_output("updated", "true")
+          set_output("status", "updated")
+          set_output("summary", "README.md was updated to match code changes.")
+          print("README.md updated successfully.")
+          PYEOF
+
+      - name: Commit updated README
+        if: steps.sync.outputs.updated == 'true'
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "docs(readme): sync with code changes [skip readme-sync]"
+          file_pattern: README.md
+
+      - name: Upsert PR comment with sync result
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          README_SYNC_STATUS: ${{ steps.sync.outputs.status }}
+          README_SYNC_SUMMARY: ${{ steps.sync.outputs.summary }}
+          README_SYNC_UPDATED: ${{ steps.sync.outputs.updated }}
+        with:
+          script: |
+            const marker = '<!-- readme-sync-status -->';
+            const status = process.env.README_SYNC_STATUS || 'unknown';
+            const summary = process.env.README_SYNC_SUMMARY || 'No summary available.';
+            const updated = process.env.README_SYNC_UPDATED === 'true';
+
+            const body = [
+              marker,
+              '## README Sync Result',
+              '',
+              `- Status: \`${status}\``,
+              `- Updated: \`${updated}\``,
+              '',
+              summary,
+            ].join('\n');
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+
+            const existing = comments.find(c =>
+              c.user && c.user.type === 'Bot' && c.body && c.body.includes(marker)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
+            }
