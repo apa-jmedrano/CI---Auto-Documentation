@@ -9,6 +9,7 @@ StringUtils is a .NET library designed to provide utility functions for string m
 - **Testing Framework**: xUnit
 - **Package Management**: NuGet
 - **Code Quality Tools**: Coverlet for code coverage
+- **Configuration**: appsettings.json for connection strings
 
 ## Approval / Business Workflow
 This project follows a standard development workflow:
@@ -18,7 +19,10 @@ This project follows a standard development workflow:
 4. **Deployment**: Once approved, changes are merged into the main branch and deployed.
 
 ## Database / Persistence Layer
-This project does not include a database or persistence layer as it focuses solely on string utility functions. All operations are performed in-memory.
+This project includes configuration for multiple SQL Server databases, which are defined in the `appsettings.json` file. The connection strings for the databases are as follows:
+- **Primary Database**: MainAppDb
+- **Reporting Database**: ReportingDb
+- **Archive Database**: ArchiveDb
 
 ## Deployment / Infrastructure
 Currently, there is no specific deployment infrastructure defined for this library, as it is intended to be used as a library in other applications. However, it can be packaged and published to NuGet for distribution.
