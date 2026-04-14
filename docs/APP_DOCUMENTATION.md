@@ -13,7 +13,7 @@ The primary purpose of the StringUtils library is to facilitate developers by of
 These functions assist in performing complex string operations easily and efficiently.
 
 ## Architecture
-The application is built using the .NET framework version 10.0 and is implemented in C#. The design is modular, with clear separation between the utility functions and testing components, enhancing maintainability and testability.
+The application is built using the .NET framework version 10.0 and is implemented in C#. The design is modular, with clear separation between the utility functions and testing components, enhancing maintainability and testability. Additionally, a new `MathUtils` class has been introduced, providing basic mathematical operations such as addition, subtraction, multiplication, division, and factorial calculation.
 
 ## Servers And Hosting
 Not specified in repository.
